@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dsh-tc-mail · 本地预览挂具</title>
+<style>
+  :root {
+    color-scheme: light;
+    --dsw-alias-bg-base: #ffffff;
+    --dsw-alias-bg-layer-1: #ffffff;
+    --dsw-alias-bg-layer-2: #f7f8fa;
+    --dsw-alias-border-l1: rgba(24, 28, 35, 0.08);
+    --dsw-alias-border-l2: rgba(24, 28, 35, 0.14);
+    --dsw-alias-label-primary: #16181d;
+    --dsw-alias-label-secondary: #55595f;
+    --dsw-alias-label-tertiary: #8b8f96;
+    --dsw-alias-label-primary-inverted: #ffffff;
+    --dsw-alias-brand-primary: #1f7ae0;
+    --dsw-alias-interactive-bg-hover: rgba(24, 28, 35, 0.045);
+    --dsw-alias-interactive-bg-active: rgba(24, 28, 35, 0.075);
+    --dsw-alias-state-error-primary: #d93f3f;
+    --dsw-alias-state-success-primary: #23a06a;
+    --dsw-alias-state-warn-primary: #d99b1f;
+    --dsw-alias-bg-mask-1: rgba(16, 18, 22, 0.36);
+    --dsw-alias-toast-bg: rgba(28, 28, 30, 0.92);
+    --dsw-alias-toast-label: #ffffff;
+    --dsw-alias-scrollbar-bg-l2: rgba(24, 28, 35, 0.16);
+    --dsw-alias-scrollbar-hover-l2: rgba(24, 28, 35, 0.3);
+    --dsw-font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    --dsw-shadow-lv3: 0 18px 48px rgba(16, 18, 22, 0.28);
+  }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: var(--dsw-font-family); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); }
+  #app { display: flex; height: 100%; }
+  .fake-rail {
+    width: 236px; flex: 0 0 236px; display: flex; flex-direction: column; gap: 2px;
+    padding: 10px 8px; box-sizing: border-box;
+    border-right: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-2);
+  }
+  .fake-brand { display: flex; align-items: center; gap: 8px; padding: 6px 8px 12px; font-weight: 600; font-size: 13px; }
+  .fake-brand i { width: 18px; height: 18px; border-radius: 5px; background: linear-gradient(135deg, #2fb6a8, #1f7ae0); display: inline-block; }
+  .fake-item {
+    display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 9px;
+    border-radius: 7px; color: var(--dsw-alias-label-secondary); font-size: 13px; cursor: default;
+  }
+  .fake-item[data-active="true"] { background: var(--dsw-alias-interactive-bg-active); color: var(--dsw-alias-label-primary); font-weight: 600; }
+  .fake-item svg { flex: 0 0 auto; }
+  .fake-sep { height: 1px; margin: 8px 6px; background: var(--dsw-alias-border-l1); }
+  .fake-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside class="fake-rail">
+    <div class="fake-brand"><i></i>DeepSeek Harness</div>
+    <div class="fake-item">新建任务</div>
+    <div class="fake-item">定时任务</div>
+    <div class="fake-item">资料库</div>
+    <div class="fake-item">项目 <span style="margin-left:auto;font-size:11px;opacity:.6">BETA</span></div>
+    <div class="fake-item" data-active="true" id="rail-mail">
+      <span id="rail-icon" style="display:inline-flex"></span>
+      <span>我的邮箱</span>
+    </div>
+    <div class="fake-sep"></div>
+    <div class="fake-item" style="font-size:12px;opacity:.7">一键做我的教师工作台</div>
+  </aside>
+  <main class="fake-main"><div id="mount" style="flex:1 1 auto;min-height:0"></div></main>
+</div>
+
+<script src="../node_modules/react/umd/react.development.js"></script>
+<script src="../node_modules/react-dom/umd/react-dom.development.js"></script>
+<script>
+/* ------------------------------------------------------------------ *
+ * Minimal stand-in for the Harness module loader + React seed table.
+ * ------------------------------------------------------------------ */
+(function () {
+  const React = window.React
+
+  const jsxRuntime = {
+    jsx(type, props, key) { return make(type, props, key) },
+    jsxs(type, props, key) { return make(type, props, key) },
+    Fragment: React.Fragment,
+  }
+  function make(type, props, key) {
+    const { children, ...rest } = props || {}
+    if (key !== undefined) rest.key = key
+    const kids = children === undefined ? [] : Array.isArray(children) ? children : [children]
+    return React.createElement(type, rest, ...kids)
+  }
+
+  const modules = {
+    react: React,
+    'react-dom': window.ReactDOM,
+    'react-dom/client': window.ReactDOM,
+    'react/jsx-runtime': jsxRuntime,
+  }
+
+  const registry = []
+  window.__ModuleLoader__ = {
+    load({ id, factory }) {
+      const exported = factory((name) => {
+        if (!modules[name]) throw new Error('module not found: ' + name)
+        return modules[name]
+      })
+      registry.push({ id, exported })
+    },
+  }
+  window.__registry = registry
+})();
+</script>
+
+<script src="../lib/client.js"></script>
+<script>
+/* ------------------------------------------------------------------ *
+ * Mock host: fetch interception with synthetic fixtures.
+ * Every address uses example.com on purpose — this harness is also the
+ * source of README screenshots, so no real mailbox data may appear.
+ * ------------------------------------------------------------------ */
+(function () {
+  const now = Date.now()
+  const iso = (minutesAgo) => new Date(now - minutesAgo * 60000).toISOString()
+
+  const INBOX = [
+    { id: 'msg_demo_01', subject: '[probe] body 体积阈值测试（阈值 512KB） 十大关键词与 A 股影响', from: { name: 'ops-demo', email: 'ops-demo@example.com' }, snippet: '01 美联储集体放鹰，10 月加息概率一周内从约 70% 降至 25%–30%；官方密集讲话集体转向「不急于降息」；鲍威尔今年没…', at: iso(38), read: false, att: false },
+    { id: 'msg_demo_02', subject: '[probe] 换行符与字符集测试 · 本邮件含换行、中文引号、emoji', from: { name: 'ops-demo', email: 'ops-demo@example.com' }, snippet: '不同格式的正文渲染是否被正确解析 — 测试多字节与特殊字符是否被正确转义。', at: iso(52), read: false, att: true },
+    { id: 'msg_demo_03', subject: '[probe] 传输测试 · 请忽略 transport probe', from: { name: 'mail-agent', email: 'mail-agent@example.com' }, snippet: '此邮件由 demo-agent 通过 Agent Mail 自动发送，用于验证投递链路是否可用。', at: iso(96), read: false, att: false },
+    { id: 'msg_demo_04', subject: 'Agent Mail 接入成功', from: { name: 'Agent Mail 团队', email: 'team@example.com' }, snippet: '已为 DEMO-WORKSTATION 接入 Agent Mail，现在可以在 DEMO-WORKSTATION 中收发邮件了。', at: iso(180), read: true, att: false },
+    { id: 'msg_demo_05', subject: '每日新闻摘要 · 演示数据', from: { name: 'digest-agent', email: 'digest@example.com' }, snippet: '今日要闻 TOP 10：宏观、产业与科技板块的三条主线，附来源与时间窗。', at: iso(320), read: true, att: true },
+    { id: 'msg_demo_06', subject: '周报：自动化任务运行情况', from: { name: 'scheduler', email: 'scheduler@example.com' }, snippet: '本周共触发 42 次定时任务，成功 41 次，1 次因网络超时重试后成功。', at: iso(1500), read: true, att: false },
+    { id: 'msg_demo_07', subject: 'Re: 关于附件大小上限的确认', from: { name: 'Alice Chen', email: 'alice@example.com' }, snippet: '确认过了，单封邮件附件上限 20 MB，最多 50 个，超出会直接拒绝。', at: iso(2600), read: true, att: false },
+    { id: 'msg_demo_08', subject: '邀请：本周五架构评审', from: { name: 'Bob Liu', email: 'bob@example.com' }, snippet: '议题：邮件插件 Host/Client 分层、错误归一化与外观设置持久化。', at: iso(4300), read: true, att: false },
+  ]
+
+  const SENT = [
+    { id: 'msg_sent_01', subject: 'Re: 关于附件大小上限的确认', from: { name: 'me', email: 'alice@example.com' }, to: [{ name: 'Alice Chen', email: 'alice@example.com' }], snippet: '明白了，我会在 UI 上先做一次 20 MB 的前置校验，避免用户白等。', at: iso(2500), read: true, att: false },
+    { id: 'msg_sent_02', subject: '每日新闻摘要 · 演示数据', from: { name: 'me', email: 'alice@example.com' }, to: [{ name: 'digest', email: 'digest@example.com' }], snippet: '本期摘要已生成，包含 10 条要闻与 3 条待办。', at: iso(330), read: true, att: true },
+    { id: 'msg_sent_03', subject: '测试：插件发信链路', from: { name: 'me', email: 'alice@example.com' }, to: [{ name: 'ops-demo', email: 'ops-demo@example.com' }], snippet: '这是一封用于验证 send 两阶段确认的测试邮件。', at: iso(700), read: true, att: false },
+  ]
+
+  const TRASH = [
+    { id: 'msg_trash_01', subject: '过期的构建通知', from: { name: 'ci', email: 'ci@example.com' }, snippet: 'build #1024 finished in 48s', at: iso(5000), read: true, att: false },
+  ]
+
+  const DETAIL = {
+    msg_demo_01: {
+      subject: '[probe] body 体积阈值测试（阈值 512KB） 十大关键词与 A 股影响',
+      from: { name: 'ops-demo', email: 'ops-demo@example.com' },
+      to: [{ name: 'alice', email: 'alice@example.com' }],
+      createdAt: iso(38),
+      bodyFormat: 'HTML',
+      body: `<!doctype html><html><head><style>
+        .card{max-width:600px;margin:0 auto;border:1px solid #e6e8eb;border-radius:12px;overflow:hidden;font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+        .hd{padding:22px 26px;background:#f7f8fa;border-bottom:1px solid #e6e8eb}
+        .hd h2{margin:0;font-size:17px;color:#16181d}
+        .bd{padding:22px 26px;font-size:14px;line-height:1.75;color:#22252a}
+        .row{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed #eceef1}
+        .k{width:96px;color:#8b8f96;flex:0 0 auto}
+        .tag{display:inline-block;padding:1px 8px;border-radius:999px;background:#eef4ff;color:#1f7ae0;font-size:12px}
+        img{max-width:100%}
+      </style></head><body>
+      <div class="card">
+        <div class="hd"><h2>体量阈值测试报告</h2><div style="margin-top:6px;color:#8b8f96;font-size:13px">probe · 自动生成 · 仅用于演示</div></div>
+        <div class="bd">
+          <p>这是一封用于本地预览的<strong>合成邮件</strong>，正文包含表格、链接、行内样式与一张外部图片，用来检查渲染与隐私拦截的效果。</p>
+          <div class="row"><span class="k">发件人</span><span>ops-demo@example.com</span></div>
+          <div class="row"><span class="k">体积</span><span>约 18 KB（阈值 512 KB）</span></div>
+          <div class="row"><span class="k">状态</span><span class="tag">已投递</span></div>
+          <p style="margin-top:18px">三张图与一段外链：<a href="https://example.com/report">查看完整报告</a></p>
+          <img src="https://example.com/pixel.png" alt="demo" width="120" height="40" style="border:1px dashed #cfd3d8;border-radius:6px" />
+          <p style="margin-top:18px;color:#8b8f96;font-size:12px">默认拦截外部图片；点击右上角「显示图片」后才会加载。</p>
+        </div>
+      </div></body></html>`,
+      attachments: [
+        { id: 'att_demo_01', filename: '阈值测试报告.pdf', contentType: 'application/pdf', size: 482133 },
+        { id: 'att_demo_02', filename: '样本数据.csv', contentType: 'text/csv', size: 12044 },
+      ],
+    },
+  }
+
+  const SETTINGS = {
+    font: { family: '', size: 14, color: '' },
+    surface: { color: '', opacity: 1, radius: 12 },
+    behavior: { dir: 'inbox', autoRefreshSec: 0, showImages: false, pageSize: 20 },
+    advanced: { cliPath: '', workspace: '' },
+  }
+
+  const toItem = (row) => ({
+    id: row.id,
+    subject: row.subject,
+    snippet: row.snippet,
+    from: row.from,
+    to: row.to || [{ name: 'alice', email: 'alice@example.com' }],
+    createdAt: row.at,
+    isRead: row.read,
+    hasAttachments: row.att,
+    dir: 'inbox',
+  })
+
+  const json = (data, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => data,
+  })
+
+  window.fetch = async (input, options = {}) => {
+    const url = new URL(String(input), location.href)
+    const path = url.pathname.replace('/api/dsh-tc-mail', '')
+    const method = (options.method || 'GET').toUpperCase()
+    const body = options.body ? JSON.parse(options.body) : null
+
+    if (path === '/health') {
+      return json({ ok: true, data: {
+        ready: true, reason: null,
+        cli: { version: '1.0.18', path: 'agently-cli', kind: 'exe', source: 'PATH' },
+        auth: { loggedIn: true, status: 'logged_in', workspace: 'default', storage: 'Windows DPAPI' },
+        account: { aliasId: 'alias_demo', email: 'alice@example.com', name: 'alice', quota: 50, scopes: ['mail:read', 'mail:send'] },
+        sentToday: 3,
+      } })
+    }
+    if (path === '/settings' && method === 'GET') return json({ ok: true, data: SETTINGS })
+    if (path === '/settings' && method === 'PUT') {
+      Object.assign(SETTINGS.font, body.font || {})
+      Object.assign(SETTINGS.surface, body.surface || {})
+      Object.assign(SETTINGS.behavior, body.behavior || {})
+      Object.assign(SETTINGS.advanced, body.advanced || {})
+      return json({ ok: true, data: SETTINGS })
+    }
+    if (path === '/settings/reset') return json({ ok: true, data: SETTINGS })
+    if (path === '/messages') {
+      const dir = url.searchParams.get('dir') || 'inbox'
+      const rows = dir === 'sent' ? SENT : dir === 'trash' ? TRASH : INBOX
+      return json({ ok: true, data: { items: rows.map(toItem), pagination: { hasMore: false, nextCursor: null }, dir } })
+    }
+    if (path.startsWith('/messages/')) {
+      const id = decodeURIComponent(path.slice('/messages/'.length))
+      const base = DETAIL[id]
+      const row = [...INBOX, ...SENT, ...TRASH].find((entry) => entry.id === id)
+      if (base) return json({ ok: true, data: { id, cc: [], bcc: [], attachmentCount: base.attachments.length, rfcMessageId: '<demo@example.com>', ...base } })
+      return json({ ok: true, data: {
+        id, subject: row ? row.subject : '(无主题)', from: row ? row.from : { name: 'demo', email: 'demo@example.com' },
+        to: row && row.to ? row.to : [{ name: 'alice', email: 'alice@example.com' }], cc: [], bcc: [],
+        createdAt: row ? row.at : iso(60), bodyFormat: 'PLAIN', attachments: [], attachmentCount: 0,
+        isRead: true, hasAttachments: false, dir: 'inbox',
+        body: '这是一封纯文本演示邮件。\n\n第二段用于检查行距与换行是否保留。\n—— dsh-tc-mail preview',
+      } })
+    }
+    if (path === '/search') return json({ ok: true, data: { items: [], pagination: { hasMore: false, nextCursor: null }, query: '' } })
+    if (path === '/upload') return json({ ok: true, data: { uploadId: 'upl_demo', name: body.name, size: 1024 } })
+    if (path === '/send' || path === '/reply' || path === '/forward') return json({ ok: true, data: { queued: true } })
+    if (path === '/trash') return json({ ok: true, data: { moved: body.ids } })
+    if (path === '/delete') return json({ ok: true, data: { deletedCount: 1 } })
+    if (path === '/attachment') return json({ ok: true, data: { savedTo: 'C:/Users/demo/.dsh/tc-mail/downloads/demo.pdf' } })
+    if (path === '/auth/login') return json({ ok: true, data: { status: 'waiting', url: 'https://example.com/oauth', log: [] } })
+    return json({ ok: false, code: 'bad_request', message: 'mock: ' + path }, 404)
+  }
+})();
+</script>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * Boot the plugin into a fake Harness context.
+ * ------------------------------------------------------------------ */
+(function () {
+  const React = window.React
+  const ReactDOM = window.ReactDOM
+  const entry = (window.__registry || [])[0]
+  if (!entry) {
+    document.getElementById('mount').textContent = 'client bundle 未加载'
+    return
+  }
+
+  const registered = {}
+  const ctx = {
+    effect(fn) { return fn() },
+    slots: {
+      inject(_name, callback) { callback() },
+      register(meta, component) {
+        registered[`${meta.name}:${meta.key || meta.id}`] = component
+        return () => {}
+      },
+    },
+  }
+
+  entry.exported.apply(ctx)
+
+  const panel = registered['main:dsh-tc-mail']
+  const icon = registered['sidebar.panellist:dsh-tc-mail']
+  if (icon) ReactDOM.createRoot(document.getElementById('rail-icon')).render(React.createElement(icon, { size: 16, active: true }))
+  if (panel) ReactDOM.createRoot(document.getElementById('mount')).render(React.createElement(panel))
+
+  /* Deep links for screenshots: ?view=reader|settings|compose */
+  const view = new URLSearchParams(location.search).get('view')
+  if (view) {
+    setTimeout(() => {
+      if (view === 'reader') document.querySelector('.tc-row')?.click()
+      if (view === 'settings') document.querySelector('[title="设置"]')?.click()
+      if (view === 'compose') document.querySelector('.tc-btn--primary')?.click()
+    }, 350)
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "_description": "Output field reference for message +list stdout JSON",
+  "fields": {
+    "data.data": "Array of message summary objects; empty result is []",
+    "data.data[].created_at": "ISO 8601 timestamp string",
+    "data.data[].from": "Sender object with name and email",
+    "data.data[].from.email": "Sender email address",
+    "data.data[].from.name": "Sender display name",
+    "data.data[].is_read": "Whether the message has been read",
+    "data.data[].message_id": "Message identifier (msg_ prefix)",
+    "data.data[].snippet": "Short preview of email body",
+    "data.data[].subject": "Email subject",
+    "data.pagination.has_more": "Whether more results exist",
+    "data.pagination.next_cursor": "Pagination cursor for next page",
+    "data.pagination.previous_cursor": "Pagination cursor for previous page",
+    "ok": "true when the command succeeds"
+  },
+  "required": [
+    "ok",
+    "data.data"
+  ]
+}

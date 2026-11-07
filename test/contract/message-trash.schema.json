@@ -1,0 +1,12 @@
+{
+  "_description": "Output field reference for message +trash",
+  "confirmation_fields": {
+    "data.action_url": "Optional URL for completing or reviewing the confirmation action",
+    "data.confirmation_required": "true on the first call (intermediate state, exit 0)",
+    "data.confirmation_token": "Token to pass via --confirmation-token to complete the action",
+    "data.summary": "Operation summary to review before confirming"
+  },
+  "success_fields": {
+    "deleted": "true when message is moved to trash"
+  }
+}

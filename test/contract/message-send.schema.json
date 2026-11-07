@@ -1,0 +1,17 @@
+{
+  "_description": "Output field reference for message +send",
+  "confirmation_fields": {
+    "data.action_url": "Optional URL for completing or reviewing the confirmation action",
+    "data.confirmation_required": "true on the first call (intermediate state, exit 0)",
+    "data.confirmation_token": "Token to pass via --confirmation-token to send",
+    "data.expires_in": "Seconds until the confirmation token expires",
+    "data.summary.action": "\"send\"",
+    "data.summary.attachment_count": "Number of attachments",
+    "data.summary.from": "Sender email",
+    "data.summary.subject": "Email subject",
+    "data.summary.to": "Array of recipient emails"
+  },
+  "success_fields": {
+    "queued": "true when send is queued for delivery"
+  }
+}

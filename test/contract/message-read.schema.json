@@ -1,0 +1,35 @@
+{
+  "_description": "Output field reference for message +read stdout JSON",
+  "fields": {
+    "data.attachment_count": "Number of attachments",
+    "data.attachments": "Array of attachment objects; no attachments is []",
+    "data.attachments[].attachment_id": "Attachment identifier (att_ prefix) for normal attachments; use attachment +download when present",
+    "data.attachments[].content_type": "Attachment MIME content type",
+    "data.attachments[].download_url": "Direct download URL for a large attachment when attachment_id is absent",
+    "data.attachments[].filename": "Attachment filename",
+    "data.attachments[].size": "Attachment size in bytes",
+    "data.bcc": "Array of BCC recipient objects",
+    "data.body": "Message body",
+    "data.body_format": "Message body format: HTML, MARKDOWN, or PLAIN",
+    "data.calendar_ics": "Raw iCalendar (.ics) content when present",
+    "data.cc": "Array of CC recipient objects",
+    "data.created_at": "ISO 8601 timestamp string",
+    "data.dir": "Mailbox direction/folder",
+    "data.from": "Sender object with name and email",
+    "data.from.email": "Sender email address",
+    "data.from.name": "Sender display name",
+    "data.has_attachments": "Whether the message has attachments",
+    "data.is_read": "Whether the message has been read",
+    "data.message_id": "Message identifier (msg_ prefix)",
+    "data.rfc_message_id": "RFC Message-ID header value",
+    "data.subject": "Email subject",
+    "data.to": "Array of recipient objects",
+    "data.to[].email": "Recipient email address",
+    "data.to[].name": "Recipient display name",
+    "ok": "true when the command succeeds"
+  },
+  "required": [
+    "ok",
+    "data.attachments"
+  ]
+}

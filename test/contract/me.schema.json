@@ -1,0 +1,20 @@
+{
+  "_description": "Output field reference for +me stdout JSON",
+  "fields": {
+    "data.aliases": "Array of alias objects",
+    "data.aliases[].alias_id": "Alias identifier",
+    "data.aliases[].email": "Email address for this alias",
+    "data.aliases[].is_primary": "Whether this is the primary alias",
+    "data.constraints": "Account attachment limits",
+    "data.constraints.max_attachment_count": "Max number of attachments per message",
+    "data.constraints.max_attachment_size_bytes": "Max size of a single attachment, in bytes",
+    "data.constraints.max_total_attachments_size_bytes": "Max combined size of all attachments, in bytes",
+    "data.rate_limits": "Rate limit information by API or capability",
+    "data.scopes": "Token scopes granted to the CLI",
+    "ok": "true when the command succeeds"
+  },
+  "required": [
+    "ok",
+    "data.aliases"
+  ]
+}

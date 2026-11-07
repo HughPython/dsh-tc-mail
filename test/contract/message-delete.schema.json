@@ -1,0 +1,15 @@
+{
+  "_description": "Output field reference for message +delete",
+  "confirmation_fields": {
+    "data.action_url": "Optional URL for completing or reviewing the confirmation action",
+    "data.confirmation_required": "true when explicit confirmation is required (intermediate state, exit 0)",
+    "data.confirmation_token": "Token to pass via --confirmation-token only after explicit user approval",
+    "data.expires_in": "Seconds until the confirmation token expires",
+    "data.message": "Human-readable confirmation instruction from the service",
+    "data.summary": "Operation summary to review before confirming"
+  },
+  "success_fields": {
+    "data.deleted": "Present for --id; true when the selected message was permanently deleted",
+    "data.deleted_count": "Present for --all; number of messages permanently deleted from trash"
+  }
+}

@@ -1,0 +1,163 @@
+# dsh-tc-mail · 智能体邮箱
+
+把 **腾讯 Agent Mail（智能体邮箱）** 做成 DeepSeek Harness 的原生面板：左侧栏入口、收/发件箱、读信、写信、搜索、软删除与永久删除，外加一个可调配字体、配色与透明度的设置弹框。
+
+An Agent Mail client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): sidebar entry, native panel, full mail operations, and appearance settings for font, colour and transparency.
+
+![我的邮箱面板](docs/panel.png)
+
+> 截图来自 `dev/preview.html` 本地预览挂具，数据全部为合成样例（`example.com`），不含任何真实邮箱内容。
+
+---
+
+## 特性
+
+- **左侧栏入口**：`我的邮箱` 图标挂在 Harness 官方 `sidebar.panellist` 槽位，点击进入 `main` 主面板，与宿主其它面板行为一致。
+- **收信 / 发信 / 垃圾箱**：三个视图，未读圆点、附件回形针、相对时间（今天 / 昨天 / 年月日）。
+- **读信**：HTML 正文按原始排版渲染（保留邮件自带的 `<style>`），纯文本保留换行；附件逐个下载到 `~/.dsh/tc-mail/downloads/`。
+- **写信 / 回复 / 转发**：支持抄送、密送、附件（单文件 ≤ 20 MB，账号上限 50 个）、全部回复、转发保留原件附件。
+- **搜索**：关键词搜索，作用域跟随当前文件夹，输入即搜（320 ms 去抖）。
+- **删除**：收件箱/发件箱 → 移入垃圾箱（30 天可恢复）；垃圾箱内 → 永久删除或清空垃圾箱，均带二次确认。
+- **设置**：字体族、字号、字体颜色、界面背景色、界面透明度、圆角、默认文件夹、自动刷新间隔、默认是否加载邮件图片，以及 `agently-cli` 路径与工作空间。改动即时预览，保存后写入 `~/.dsh/tc-mail/settings.json`。
+- **Agent 工具**：`mail_list` / `mail_read` / `mail_search` / `mail_send` / `mail_trash`，与界面共用同一套 Host 服务层，模型和面板不会出现两套语义。
+- **零运行时依赖**：插件本体不依赖任何 npm 包，不联网任何第三方服务。
+
+## 安装
+
+前置：Node.js ≥ 20，DeepSeek Harness ≥ 0.2.1-rc.2。
+
+### 1. 安装 Mail CLI 并授权
+
+```bash
+npm install -g @tencent-qqmail/agently-cli
+agently-cli auth login      # 浏览器完成 OAuth
+agently-cli +me             # 确认邮箱地址
+```
+
+也可以让 Agent 代劳：把 <https://agent.qq.com/doc/cli-setup.md> 发给它。
+
+### 2. 安装插件
+
+```bash
+# 从 npm（发布后）
+dsh plugin --profile <profile> add dsh-tc-mail
+
+# 直接从 GitHub
+dsh plugin --profile <profile> add github:<you>/dsh-tc-mail
+
+# 本地开发目录（软链，改代码后重新构建并重启）
+dsh plugin --profile <profile> add link:/absolute/path/to/dsh-tc-mail
+```
+
+或在 Harness 的「插件」页从本地目录安装，效果相同：它会同时写入 `dependencies` 与 `dsh.profile.bundles`。
+
+### 3. 重启 Harness
+
+插件在启动时装配，重启后左侧栏出现 `我的邮箱`。
+
+## 使用
+
+| 操作 | 位置 |
+|---|---|
+| 切换收信 / 发信 / 垃圾箱 | 面板内页签 |
+| 读信 | 点击任意一行，正文区右上角可「显示图片」 |
+| 回复 / 转发 | 读信视图右上角；列表行右侧也有快捷回复 |
+| 写信 | 面板右上角「发邮件」 |
+| 删除 | 勾选后点「删除」；垃圾箱内为「永久删除」 |
+| 搜索 | 工具栏右侧输入框 |
+| 设置 | 面板右上角齿轮 |
+| 管理邮箱 | 打开 <https://agent.qq.com> |
+
+### 设置项
+
+| 分组 | 可调项 | 默认 |
+|---|---|---|
+| 字体 | 字体族（含预设与自定义）、字号 11–22px、字体颜色 | 跟随界面 |
+| 界面 | 背景色、透明度 0–100%、圆角 0–24px | 跟随界面 / 100% / 12px |
+| 行为 | 默认打开视图、自动刷新（关/30s/60s/5min）、默认加载邮件图片 | 收信记录 / 60s / 关 |
+| 高级 | `agently-cli` 路径、`AGENTLY_WORKSPACE` | 自动探测 / 空 |
+
+透明度低于 100% 时面板会启用 `backdrop-filter` 模糊，透过面板可以看到宿主壁纸。
+
+> 自定义深色背景且未单独设置字体颜色时，插件会按背景亮度自动选择深色或浅色文字，避免不可读。
+
+## 安全与隐私
+
+这是本插件最需要说明的部分：
+
+1. **不直连邮件 API**。所有操作通过本机 `agently-cli` 子进程完成；OAuth token 由 CLI 存入系统安全存储（Windows 为 DPAPI），插件从不读取、不落盘。
+2. **参数不经 shell**。`spawn` 固定 `shell: false` + argv 数组；正文写到临时文件后用 `--body-file` 传入，同时满足 CLI「路径必须在 cwd 内」的限制，也避免超长或含特殊字符的参数。
+3. **HTTP 接口仅限本机**。所有路由在 `/api/dsh-tc-mail` 前缀下，校验 loopback 来源、HTTP 方法与请求体大小上限。
+4. **HTML 正文双层隔离**。邮件正文是不可信第三方内容，而渲染进程暴露了宿主能力，所以正文要过两道关：
+   - 白名单消毒：移除 `script/iframe/object/embed/form/svg` 等标签、全部 `on*` 事件属性，`href`/`src` 只允许 `http(s)`/`mailto`/`tel`/`data:image`；
+   - 渲染在 `sandbox="allow-popups"`（**无** `allow-scripts`、**无** `allow-same-origin`）的 iframe 内，并注入 `default-src 'none'` 的 CSP。
+5. **外部图片默认拦截**，避免追踪像素；需要时点「显示图片」显式放行。
+6. **无遥测**。插件不采集、不上报任何数据。
+
+> 关于 `<style>`：为了保留营销邮件/通知邮件的排版，正文 `<style>` 会被保留。在没有脚本、没有同源权限、没有外部请求的沙箱里，CSS 不构成逃逸面。
+
+## Agent 工具
+
+| 工具 | 作用 |
+|---|---|
+| `mail_list` | 按文件夹列出邮件摘要 |
+| `mail_read` | 读取正文与附件列表 |
+| `mail_search` | 关键词搜索 |
+| `mail_send` | 发送新邮件（纯文本） |
+| `mail_trash` | 移入垃圾箱，需 `confirm: true` |
+
+**永久删除不开放给 Agent**：不可恢复的操作只允许用户在主面板里执行。
+
+## 开发
+
+```bash
+npm install            # 只装 devDependencies（esbuild / react / playwright-core）
+npm run build          # 生成 lib/index.js（Host，ESM）与 lib/client.js（浏览器端包装）
+npm run watch          # 监听 src/
+npm test               # node:test，21 个用例，不联网、不碰真实邮件
+npm run preview        # 打开 dev/preview.html（本地预览挂具，合成数据）
+npm run contract       # 抓取 agently-cli 的 --print-output-schema 快照到 test/contract/
+```
+
+目录：
+
+```
+src/host/      cli.js（子进程封装）· mail-service.js（唯一实现）· routes.js · settings-store.js · tools.js
+src/client/    index.jsx（槽位注册）· panel.jsx（状态机）· theme.js · sanitize.js · components/
+lib/           构建产物，随包发布
+dev/           预览挂具与本地截图（不发布，real-app 截图含真实数据，勿提交）
+test/          单元测试 + CLI 契约快照
+```
+
+调试提示：
+
+- 客户端产物必须是 `window.__ModuleLoader__.load({ id, factory })` 包装的惰性 CJS，`react` 与 `react/jsx-runtime` 由宿主模块表提供，构建时保持 external。
+- 宿主主题变量声明在 `body` 而不是 `:root`，且皮肤会把 `--dsw-alias-bg-layer-*` 改成半透明 `color-mix()`。因此插件在 JS 里解析主题、合成实际渲染色，再把具体值以 `--tc-*` 传给面板与弹框（弹框被 portal 到 `body`，拿不到 `.tc-root` 的作用域）。
+- 侧边栏条目与 `main` 槽必须成对注册，`ctx.layout.selectPanel(id)` 找不到 `main` 条目会抛错。
+
+## 兼容性
+
+- Harness `0.2.2-rc.1` 实测通过（Windows / Edge 内核）。
+- 需要宿主提供 `webServer`；`tools` 与 `systemPrompt` 为可选服务，缺失时插件仍可只用界面。
+- `agently-cli` 版本以 `1.0.18` 为基线；升级后可用 `npm run contract` diff 字段漂移。
+
+## FAQ
+
+**Q：面板显示「还没安装 agently-cli」？**
+按提示安装并授权，或到设置 → 高级里填 CLI 的绝对路径。
+
+**Q：读信后邮件仍是未读？**
+列表的已读状态以服务端返回为准，插件不伪造状态。若服务端未标记已读，界面也会如实显示。
+
+**Q：为什么发件箱的收件人有时为空？**
+列表接口不保证返回 `to`。插件不做猜测，读到详情后才补全。
+
+**Q：删除能恢复吗？**
+「删除」只是移入垃圾箱，30 天内可在垃圾箱里找到；「永久删除」不可恢复。
+
+**Q：多个邮箱账号？**
+`agently-cli` 以 `AGENTLY_WORKSPACE` 区分登录态，在设置 → 高级里切换即可。
+
+## License
+
+MIT
