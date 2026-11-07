@@ -10,3 +10,6 @@ test/contract/local-*
 *.log
 .DS_Store
 Thumbs.db
+
+# workspace memory / local agent data
+.workbuddy/
