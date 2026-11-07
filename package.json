@@ -1,0 +1,68 @@
+{
+  "name": "dsh-tc-mail",
+  "version": "0.1.0",
+  "description": "Agent Mail client for DeepSeek Harness — read, send, search and manage your Agent Mail (agently-cli) mailbox inside the Harness Web UI.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "icon": "icon.svg",
+  "files": [
+    "lib",
+    "locale",
+    "docs",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "agent-mail",
+    "email",
+    "mail",
+    "agently"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "preview": "node scripts/preview.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "contract": "node scripts/contract.mjs",
+    "prepublishOnly": "npm run build",
+    "shot": "node scripts/shot.mjs",
+    "verify": "node scripts/verify-dsh.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "playwright-core": "^1.65.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

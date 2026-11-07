@@ -1,0 +1,7 @@
+# dsh-tc-mail bundle patch: inserts the plugin row into the profile roster.
+# The Host half (exports ".") serves the mailbox over local HTTP routes and
+# registers the mail_* agent tools; the dsh.client declaration in package.json
+# loads the browser half (exports "./client") into the Web UI sidebar.
+- insert:
+    - id: dsh-tc-mail
+      name: 'dsh-tc-mail'

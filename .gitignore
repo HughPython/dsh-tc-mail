@@ -1,0 +1,12 @@
+node_modules/
+lib/**/*.map
+
+# local preview screenshots — real-app captures may contain real mailbox data
+dev/shots/
+*.local.json
+*.cookies.txt
+test/contract/local-*
+
+*.log
+.DS_Store
+Thumbs.db
