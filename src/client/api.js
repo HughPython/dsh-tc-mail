@@ -70,4 +70,6 @@ export const api = {
   },
   loginStart: () => request('/auth/login', { method: 'POST' }),
   loginStatus: () => request('/auth/login'),
+  installCli: () => request('/setup/install', { method: 'POST' }),
+  installStatus: () => request('/setup/install'),
 }

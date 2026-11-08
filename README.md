@@ -28,13 +28,17 @@ An Agent Mail client for [DeepSeek Harness](https://github.com/deepseek-ai/deeps
 
 ### 1. 安装 Mail CLI 并授权
 
+装好插件后，面板会自己检测 CLI。没装的话，面板中间会给出**「一键安装 agently-cli」**按钮——它用你机器上 npm 的全局目录安装，不需要开终端；装完再点「去授权」即可。
+
+也可以手动执行：
+
 ```bash
 npm install -g @tencent-qqmail/agently-cli
 agently-cli auth login      # 浏览器完成 OAuth
 agently-cli +me             # 确认邮箱地址
 ```
 
-也可以让 Agent 代劳：把 <https://agent.qq.com/doc/cli-setup.md> 发给它。
+或者让 Agent 代劳：把 <https://agent.qq.com/doc/cli-setup.md> 发给它。
 
 ### 2. 安装插件
 
@@ -143,8 +147,17 @@ test/          单元测试 + CLI 契约快照
 
 ## FAQ
 
-**Q：面板显示「还没安装 agently-cli」？**
-按提示安装并授权，或到设置 → 高级里填 CLI 的绝对路径。
+**Q：面板显示「还没安装 agently-cli」，但我明明装过？**
+这是 Windows 上最常见的一类问题：`npm i -g` 把包装进了某个全局前缀，而 GUI 启动的应用继承不到该目录的 PATH（便携版 Node、nvm-windows、Volta、fnm，或某些软件自带运行时都会这样）。插件为此做了两级兜底：
+
+1. 除了 PATH，还会扫描常见全局前缀（`%APPDATA%\npm`、`%LOCALAPPDATA%\npm`、`Program Files\nodejs`、nvm/fnm/Volta 的版本目录等），并在其中直接定位**平台二进制**；
+2. 仍然找不到时，可在设置 → 高级里填 `agently-cli` 的绝对路径（指向 `agently-cli.exe` 最稳）。
+
+**Q：面板显示「agently-cli 无法运行」？**
+说明找到了包但执行失败，通常是全局安装残缺（只有 `scripts/run.js`、缺 `@tencent-qqmail/agently-cli-<平台>` 这个平台包）。点「重新安装」即可修复。
+
+**Q：为什么以前会闪一个黑色命令行窗口？**
+那是 `agently-cli.exe` 作为控制台程序被间接拉起时的窗口。旧实现走 npm shim：`node scripts/run.js` 再由它拉起 `.exe`，而中间那层 `run.js` 拉起子进程时没有隐藏控制台，于是闪一下。现在解析器优先直接命中原生 `.exe`（并且每次 `spawn` 都带 `windowsHide`），这条链路已经不存在了。
 
 **Q：读信后邮件仍是未读？**
 列表的已读状态以服务端返回为准，插件不伪造状态。若服务端未标记已读，界面也会如实显示。

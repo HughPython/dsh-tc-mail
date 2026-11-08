@@ -12,11 +12,13 @@
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync, statSync } from 'node:fs'
+import { readdirSync, statSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 const PLATFORM_DIR = `agently-cli-${process.platform}-${process.arch}`
-const PKG_SCOPE = path.join('node_modules', '@tencent-qqmail', 'agently-cli')
+const SCOPE_DIR = path.join('node_modules', '@tencent-qqmail', 'agently-cli')
+const PLATFORM_SCOPE_DIR = path.join('node_modules', '@tencent-qqmail', PLATFORM_DIR)
 
 export class CliError extends Error {
   constructor(code, message, detail) {
@@ -43,34 +45,118 @@ function exeName() {
   return process.platform === 'win32' ? 'agently-cli.exe' : 'agently-cli'
 }
 
-/** Describe a resolved npm package root, preferring the native binary. */
-function describePackageRoot(root) {
-  const exe = path.join(root, 'node_modules', PLATFORM_DIR, 'bin', exeName())
-  if (isFile(exe)) return { kind: 'exe', path: exe, root }
-  const script = path.join(root, 'scripts', 'run.js')
-  if (isFile(script)) return { kind: 'node', script, root }
-  return null
-}
-
-function searchDirs() {
-  const dirs = new Set()
-  for (const dir of String(process.env.PATH || '').split(path.delimiter)) {
-    if (dir) dirs.add(dir)
-  }
-  if (process.env.APPDATA) dirs.add(path.join(process.env.APPDATA, 'npm'))
-  if (process.env.LOCALAPPDATA) dirs.add(path.join(process.env.LOCALAPPDATA, 'npm'))
-  dirs.add('/usr/local/bin')
-  dirs.add('/opt/homebrew/bin')
-  dirs.add('/usr/bin')
-  return [...dirs]
+/** Every layout an npm prefix may use for a scoped package. */
+function packageRoots(root) {
+  return [
+    path.join(root, SCOPE_DIR),
+    path.join(root, 'lib', SCOPE_DIR),
+    path.join(root, '@tencent-qqmail', 'agently-cli'),
+  ]
 }
 
 /**
- * Resolve the CLI in four tiers:
- *   1. the user's explicit override from settings
+ * The native binary lives in a *scoped* platform package
+ * (`@tencent-qqmail/agently-cli-<platform>-<arch>`), which is easy to miss.
+ */
+function nativeBinaries(pkgRoot) {
+  return [
+    path.join(pkgRoot, 'node_modules', '@tencent-qqmail', PLATFORM_DIR, 'bin', exeName()),
+    path.join(pkgRoot, 'node_modules', PLATFORM_DIR, 'bin', exeName()),
+  ]
+}
+
+function describePrefix(root) {
+  for (const pkgRoot of packageRoots(root)) {
+    for (const exe of nativeBinaries(pkgRoot)) {
+      if (isFile(exe)) return { kind: 'exe', path: exe }
+    }
+  }
+  const hoisted = path.join(root, PLATFORM_SCOPE_DIR, 'bin', exeName())
+  if (isFile(hoisted)) return { kind: 'exe', path: hoisted }
+  for (const pkgRoot of packageRoots(root)) {
+    const script = path.join(pkgRoot, 'scripts', 'run.js')
+    if (isFile(script)) return { kind: 'node', script }
+  }
+  return null
+}
+
+function expandVersionDirs(base) {
+  const found = []
+  try {
+    for (const entry of readdirSync(base, { withFileTypes: true })) {
+      if (entry.isDirectory()) found.push(path.join(base, entry.name))
+    }
+  } catch {
+    /* the base does not exist on this machine */
+  }
+  return found
+}
+
+/**
+ * Global npm prefixes that are not on PATH.
+ *
+ * This is the common failure mode on Windows: `npm i -g` writes into a prefix
+ * that a GUI-launched app never sees (portable Node bundles, nvm-windows,
+ * Volta, fnm, or an app-managed runtime such as WorkBuddy's).
+ */
+function globalPrefixes() {
+  const home = os.homedir()
+  const env = process.env
+  const bases = []
+  const push = (value) => {
+    if (value) bases.push(value)
+  }
+
+  push(env.APPDATA && path.join(env.APPDATA, 'npm'))
+  push(env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'npm'))
+  push(env.ProgramFiles && path.join(env.ProgramFiles, 'nodejs'))
+  push(env['ProgramFiles(x86)'] && path.join(env['ProgramFiles(x86)'], 'nodejs'))
+  push(env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Volta', 'bin'))
+  push(env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Volta', 'tools', 'image', 'node'))
+  push(path.join(home, '.volta', 'bin'))
+  push('/usr/local/bin')
+  push('/opt/homebrew/bin')
+  push('/usr/local')
+  push('/usr/bin')
+
+  const versionRoots = [
+    env.APPDATA && path.join(env.APPDATA, 'nvm'),
+    env.APPDATA && path.join(env.APPDATA, 'fnm', 'node-versions'),
+    env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'fnm', 'node-versions'),
+    env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Volta', 'tools', 'image', 'node'),
+    path.join(home, '.nvm', 'versions', 'node'),
+    path.join(home, '.workbuddy', 'binaries', 'node', 'versions'),
+    path.join(home, 'AppData', 'Roaming', 'npm', 'node_modules', 'node'),
+  ].filter(Boolean)
+
+  for (const root of versionRoots) {
+    push(root)
+    for (const version of expandVersionDirs(root)) {
+      push(version)
+      push(path.join(version, 'installation'))
+    }
+  }
+
+  return bases
+}
+
+function pathDirs() {
+  return String(process.env.PATH || '')
+    .split(path.delimiter)
+    .filter(Boolean)
+}
+
+/**
+ * Resolve the CLI in this order:
+ *   1. the explicit override from settings
  *   2. a native executable on PATH
- *   3. the platform package behind an npm shim on PATH (`.cmd` / shell script)
- *   4. `scripts/run.js` executed by the current Node runtime
+ *   3. an npm package behind a PATH entry (covers `%APPDATA%\npm`, portable Node)
+ *   4. well-known global prefixes that are not on PATH
+ *   5. `scripts/run.js` executed by the current Node runtime (last resort)
+ *
+ * A native `.exe` is always preferred: going through the npm shim means
+ * `node run.js` -> `agently-cli.exe`, and that intermediate console process is
+ * what makes a `cmd` window flash on Windows.
  */
 export function resolveCli(override) {
   if (override && isFile(override)) {
@@ -80,24 +166,112 @@ export function resolveCli(override) {
     return { kind: 'exe', path: override, source: 'settings' }
   }
 
-  for (const dir of searchDirs()) {
-    const exe = path.join(dir, exeName())
-    if (isFile(exe)) return { kind: 'exe', path: exe, source: `PATH:${dir}` }
+  const labelled = []
+  for (const dir of pathDirs()) labelled.push({ root: dir, source: `PATH:${dir}` })
+  for (const prefix of globalPrefixes()) labelled.push({ root: prefix, source: `npm-global:${prefix}` })
+
+  // 1) a plain executable sitting directly in a searched directory
+  for (const entry of labelled) {
+    const exe = path.join(entry.root, exeName())
+    if (isFile(exe)) return { kind: 'exe', path: exe, source: entry.source }
   }
 
-  for (const dir of searchDirs()) {
-    for (const shim of ['agently-cli.cmd', 'agently-cli.ps1', 'agently-cli']) {
-      if (!isFile(path.join(dir, shim))) continue
-      const described = describePackageRoot(path.join(dir, PKG_SCOPE))
-      if (described) return { ...described, source: `shim:${dir}` }
+  // 2) package layouts — a native binary always beats `scripts/run.js`.
+  //    A broken global install (package present, platform binary missing) can
+  //    coexist with a healthy one, so every candidate is collected first.
+  const described = []
+  for (const entry of labelled) {
+    const found = describePrefix(entry.root)
+    if (found) described.push({ ...found, source: entry.source })
+  }
+
+  const native = described.find((entry) => entry.kind === 'exe')
+  if (native) return native
+  return described.find((entry) => entry.kind === 'node') || null
+}
+
+/* ------------------------------------------------------------------ *
+ * Streaming helpers
+ * ------------------------------------------------------------------ */
+
+function pumpLines(readable, onLine) {
+  let buffer = ''
+  readable.setEncoding('utf8')
+  readable.on('data', (chunk) => {
+    buffer += chunk
+    let index = buffer.search(/\r?\n/)
+    while (index >= 0) {
+      const line = buffer.slice(0, index)
+      buffer = buffer.slice(index + (buffer[index] === '\r' ? 2 : 1))
+      if (typeof onLine === 'function') onLine(line)
+      index = buffer.search(/\r?\n/)
     }
+  })
+  readable.on('end', () => {
+    if (buffer && typeof onLine === 'function') onLine(buffer)
+  })
+}
+
+function wireChild(child, { onLine, onClose } = {}) {
+  pumpLines(child.stdout, onLine)
+  pumpLines(child.stderr, onLine)
+  child.on('error', (error) => {
+    if (typeof onLine === 'function') onLine(String((error && error.message) || error))
+    if (typeof onClose === 'function') onClose(-1)
+  })
+  child.on('close', (code) => {
+    if (typeof onClose === 'function') onClose(code ?? -1)
+  })
+  return child
+}
+
+/**
+ * Install the CLI into the npm global prefix this machine actually uses.
+ *
+ * Runs npm's own entry script through the current Node runtime instead of a
+ * shell hop through the npm shim: no console window, no quoting concerns.
+ */
+export function installCli({ onLine, onClose } = {}) {
+  const npm = resolveNpm()
+  if (!npm) {
+    throw new CliError('cli_missing', '未找到 npm。请手动执行：npm install -g @tencent-qqmail/agently-cli')
   }
 
-  if (process.env.APPDATA) {
-    const described = describePackageRoot(path.join(process.env.APPDATA, 'npm', PKG_SCOPE))
-    if (described) return { ...described, source: 'APPDATA/npm' }
+  const child = spawn(
+    process.execPath,
+    [npm.script, 'install', '-g', '@tencent-qqmail/agently-cli', '--no-audit', '--no-fund'],
+    {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1',
+        npm_config_yes: 'true',
+        npm_config_update_notifier: 'false',
+      },
+    },
+  )
+  return { child: wireChild(child, { onLine, onClose }), npm }
+}
+
+/** Locate npm itself, so the panel can install the CLI for the user. */
+export function resolveNpm() {
+  const cliScript = (root) => {
+    const candidates = [
+      path.join(root, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+      path.join(root, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    ]
+    return candidates.find(isFile) || null
   }
 
+  for (const dir of pathDirs()) {
+    const script = cliScript(dir)
+    if (script) return { kind: 'node', script, source: `PATH:${dir}` }
+  }
+  for (const prefix of globalPrefixes()) {
+    const script = cliScript(prefix)
+    if (script) return { kind: 'node', script, source: `npm-global:${prefix}` }
+  }
   return null
 }
 
@@ -128,14 +302,17 @@ function invocation(cli, argv) {
   }
 }
 
-function runProcess(file, args, { cwd, timeoutMs }) {
+function runProcess(file, args, { cwd, timeoutMs, env } = {}) {
   return new Promise((resolve) => {
     let child
     try {
       child = spawn(file, args, {
         cwd,
+        // Windows: a console subsystem child of a GUI parent otherwise flashes
+        // a cmd window. Every spawn in this plugin sets it.
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, AGENTLY_CLI_NO_UPDATE_NOTIFIER: '1', ...env },
       })
     } catch (error) {
       resolve({ code: -1, stdout: '', stderr: String(error && error.message), spawnError: true })
@@ -257,7 +434,7 @@ export function createCli({ logger, getOverride, getWorkspace } = {}) {
       if (workspace) childEnv.AGENTLY_WORKSPACE = workspace
 
       log('debug', `[dsh-tc-mail] ${file} ${args.join(' ')}`)
-      const result = await runProcess(file, args, { cwd, timeoutMs })
+      const result = await runProcess(file, args, { cwd, timeoutMs, env: childEnv })
 
       if (result.timedOut) {
         throw new CliError('cli_error', `agently-cli 调用超时（${Math.round(timeoutMs / 1000)}s）`, { argv })
@@ -297,13 +474,18 @@ export function createCli({ logger, getOverride, getWorkspace } = {}) {
   async function version() {
     const cli = info(true)
     if (!cli) return null
-    try {
-      const { file, args, env } = invocation(cli, ['--version'])
-      const result = await runProcess(file, args, { timeoutMs: 10_000 })
-      const match = /(\d+\.\d+\.\d+[^\s]*)/.exec(result.stdout || '')
-      return { raw: (result.stdout || '').trim(), version: match ? match[1] : null, path: file, kind: cli.kind, source: cli.source }
-    } catch {
-      return { raw: '', version: null, path: cli.path || cli.script, kind: cli.kind, source: cli.source }
+    const { file, args, env } = invocation(cli, ['--version'])
+    const result = await runProcess(file, args, { timeoutMs: 10_000, env })
+    const match = /(\d+\.\d+\.\d+[^\s]*)/.exec(result.stdout || '')
+    const failed = result.code !== 0 || !match
+    return {
+      raw: (result.stdout || '').trim(),
+      version: match ? match[1] : null,
+      path: cli.path || cli.script,
+      kind: cli.kind,
+      source: cli.source,
+      failed,
+      error: failed ? (result.stderr || result.stdout || `exit ${result.code}`).split(/\r?\n/)[0].trim() : null,
     }
   }
 
@@ -320,36 +502,10 @@ export function createCli({ logger, getOverride, getWorkspace } = {}) {
     if (workspace) childEnv.AGENTLY_WORKSPACE = workspace
 
     const child = spawn(file, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: childEnv })
-    const pump = (readable) => {
-      let buffer = ''
-      readable.setEncoding('utf8')
-      readable.on('data', (chunk) => {
-        buffer += chunk
-        let index = buffer.search(/\r?\n/)
-        while (index >= 0) {
-          const line = buffer.slice(0, index)
-          buffer = buffer.slice(index + (buffer[index] === '\r' ? 2 : 1))
-          if (typeof onLine === 'function') onLine(line)
-          index = buffer.search(/\r?\n/)
-        }
-      })
-      readable.on('end', () => {
-        if (buffer && typeof onLine === 'function') onLine(buffer)
-      })
-    }
-    pump(child.stdout)
-    pump(child.stderr)
-    child.on('error', (error) => {
-      if (typeof onLine === 'function') onLine(String((error && error.message) || error))
-      if (typeof onClose === 'function') onClose(-1)
-    })
-    child.on('close', (code) => {
-      if (typeof onClose === 'function') onClose(code ?? -1)
-    })
-    return child
+    return wireChild(child, { onLine, onClose })
   }
 
   return { call, data, version, stream, info, reset: () => { cached = null; cachedAt = 0 } }
 }
 
-export const __test__ = { parseJson, firstErrorLine, resolveCli, describePackageRoot }
+export const __test__ = { parseJson, firstErrorLine, resolveCli, describePrefix, globalPrefixes }

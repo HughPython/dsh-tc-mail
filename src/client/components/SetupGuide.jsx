@@ -23,13 +23,56 @@ function CodeBlock({ text }) {
   )
 }
 
-export function SetupGuide({ kind, login, onAuthorize, t }) {
-  if (kind === 'cli_missing') {
+function InstallLog({ install, t }) {
+  if (!install) return null
+  const lines = (install.log || []).filter(Boolean).slice(-3)
+  if (install.status === 'idle' || !lines.length) return null
+  return (
+    <div className="tc-code" style={{ display: 'block', maxWidth: 520, width: '100%', textAlign: 'left', lineHeight: 1.6 }}>
+      {lines.map((line, index) => (
+        <div key={`${index}-${line.slice(0, 12)}`} style={{ opacity: index === lines.length - 1 ? 1 : 0.6 }}>
+          {line.length > 160 ? `${line.slice(0, 160)}…` : line}
+        </div>
+      ))}
+      {install.status === 'running' ? <div style={{ opacity: 0.7 }}>{t('installing')}</div> : null}
+    </div>
+  )
+}
+
+export function SetupGuide({ kind, health, login, install, onAuthorize, onInstall, t }) {
+  if (kind === 'cli_missing' || kind === 'cli_broken') {
+    const broken = kind === 'cli_broken'
+    const running = Boolean(install && install.status === 'running')
+    const done = Boolean(install && install.status === 'done')
+    const failed = Boolean(install && install.status === 'failed')
+
     return (
       <div className="tc-guide">
         <MailIcon size={28} />
-        <h3>{t('cliMissingTitle')}</h3>
-        <p>{t('cliMissingBody')}</p>
+        <h3>{broken ? t('cliBrokenTitle') : t('cliMissingTitle')}</h3>
+        <p>{broken ? t('cliBrokenBody') : t('cliMissingBody')}</p>
+
+        {broken && health && health.cli ? (
+          <p className="tc-help" style={{ wordBreak: 'break-all', maxWidth: 560 }}>
+            {t('cliPathLabel')}：{health.cli.path}
+            {health.cli.error ? ` · ${health.cli.error}` : ''}
+          </p>
+        ) : null}
+
+        {done ? (
+          <p style={{ margin: 0, fontWeight: 600 }}>{t('installDone')}</p>
+        ) : (
+          <button type="button" className="tc-btn tc-btn--primary" onClick={onInstall} disabled={running}>
+            {running ? t('installing') : broken ? t('reinstall') : t('installCli')}
+          </button>
+        )}
+
+        <InstallLog install={install} t={t} />
+        {failed ? <p className="tc-help">{t('installFailed')}</p> : null}
+
+        <p className="tc-help" style={{ marginTop: 4 }}>
+          {t('manualInstallHint')}
+        </p>
         <CodeBlock text="npm install -g @tencent-qqmail/agently-cli" />
         <CodeBlock text="agently-cli auth login" />
         <p className="tc-help">
@@ -39,9 +82,9 @@ export function SetupGuide({ kind, login, onAuthorize, t }) {
     )
   }
 
-  const waiting = login && login.status === 'waiting'
-  const failed = login && login.status === 'failed'
-  const done = login && login.status === 'done'
+  const waiting = Boolean(login && login.status === 'waiting')
+  const failed = Boolean(login && login.status === 'failed')
+  const done = Boolean(login && login.status === 'done')
 
   return (
     <div className="tc-guide">

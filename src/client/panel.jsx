@@ -35,6 +35,7 @@ export function MailPanel({ t }) {
   const [toast, setToast] = useState(null)
   const [busy, setBusy] = useState('')
   const [login, setLogin] = useState(null)
+  const [install, setInstall] = useState(null)
   const [tokens, setTokens] = useState(() => resolveTheme())
   const mounted = useRef(true)
 
@@ -164,6 +165,25 @@ export function MailPanel({ t }) {
     }, 2000)
     return () => clearInterval(timer)
   }, [login, notify, t])
+
+  /* ------------------------------------------------------ install polling */
+
+  useEffect(() => {
+    if (!install || install.status !== 'running') return undefined
+    const timer = setInterval(async () => {
+      try {
+        const state = await api.installStatus()
+        setInstall(state)
+        if (state.status === 'done') {
+          const snapshot = await api.health(true)
+          setHealth(snapshot)
+        }
+      } catch {
+        /* keep polling */
+      }
+    }, 1200)
+    return () => clearInterval(timer)
+  }, [install && install.status])
 
   /* --------------------------------------------------------------- actions */
 
@@ -325,6 +345,15 @@ export function MailPanel({ t }) {
     }
   }
 
+  const startInstall = async () => {
+    try {
+      const state = await api.installCli()
+      setInstall(state)
+    } catch (error) {
+      notify(error.message, 'error')
+    }
+  }
+
   const startLogin = async () => {
     try {
       const state = await api.loginStart()
@@ -404,9 +433,12 @@ export function MailPanel({ t }) {
         </div>
       ) : !health.ready ? (
         <SetupGuide
-          kind={health.reason === 'cli_missing' ? 'cli_missing' : 'not_logged_in'}
+          kind={health.reason === 'cli_missing' || health.reason === 'cli_broken' ? health.reason : 'not_logged_in'}
+          health={health}
           login={login}
+          install={install}
           onAuthorize={startLogin}
+          onInstall={startInstall}
           t={t}
         />
       ) : detail ? (

@@ -6,7 +6,7 @@
  * the host, so it must not become a confused-deputy channel.
  */
 
-import { CliError } from './cli.js'
+import { CliError, installCli } from './cli.js'
 
 const API_PREFIX = '/api/dsh-tc-mail'
 const JSON_BODY_LIMIT = 512 * 1024
@@ -84,6 +84,15 @@ export function registerRoutes({ webServer, mail, cli, settings, logger }) {
     exitCode: null,
   }
 
+  /* Installing the CLI from the panel: users should not need a terminal. */
+  const install = {
+    status: 'idle',
+    log: [],
+    startedAt: 0,
+    exitCode: null,
+    npm: null,
+  }
+
   function resetLogin() {
     login.status = 'idle'
     login.url = null
@@ -133,6 +142,49 @@ export function registerRoutes({ webServer, mail, cli, settings, logger }) {
       cli.reset()
       mail.invalidate()
       writeJson(res, 200, { ok: true, data: next })
+      return
+    }
+
+    /* --- one-click CLI install ---------------------------------- */
+    if (sub === '/setup/install') {
+      if (method === 'GET') {
+        writeJson(res, 200, { ok: true, data: { ...install, log: install.log.slice(-30) } })
+        return
+      }
+      if (method === 'POST') {
+        if (install.status === 'running') {
+          writeJson(res, 200, { ok: true, data: { ...install, log: install.log.slice(-30) } })
+          return
+        }
+        install.status = 'running'
+        install.log = ['正在通过 npm 安装 @tencent-qqmail/agently-cli …']
+        install.startedAt = Date.now()
+        install.exitCode = null
+        try {
+          const started = installCli({
+            onLine(line) {
+              const trimmed = String(line || '').trimEnd()
+              if (!trimmed) return
+              install.log.push(trimmed)
+              if (install.log.length > 300) install.log.splice(0, install.log.length - 300)
+            },
+            onClose(code) {
+              install.exitCode = code
+              install.status = code === 0 ? 'done' : 'failed'
+              cli.reset()
+              mail.invalidate()
+            },
+          })
+          install.npm = started.npm ? started.npm.source : null
+        } catch (error) {
+          install.status = 'failed'
+          install.exitCode = -1
+          install.log.push(String((error && error.message) || error))
+        }
+        writeJson(res, 200, { ok: true, data: { ...install, log: install.log.slice(-30) } })
+        return
+      }
+      writeJson(res, 405, { ok: false, code: 'bad_request', message: '方法不允许' })
       return
     }
 

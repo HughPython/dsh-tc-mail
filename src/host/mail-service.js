@@ -151,8 +151,11 @@ export function createMailService({ cli, settings, logger }) {
     if (!version || !version.version) {
       healthCache = {
         ready: false,
-        reason: 'cli_missing',
-        cli: null,
+        // A package can be installed yet unusable (platform binary missing,
+        // broken global prefix). Telling the two apart decides whether the UI
+        // offers "install" or "reinstall".
+        reason: version ? 'cli_broken' : 'cli_missing',
+        cli: version,
         auth: { loggedIn: false, status: 'unknown' },
         account: null,
       }
