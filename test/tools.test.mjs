@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TOOL_NAMES, buildTools } from '../src/host/tools.js'
+import { MAIL_PROMPT, TOOL_NAMES, buildTools } from '../src/host/tools.js'
 
 /**
  * `@deepseek-ai/dsh-tools` rejects type arrays (`type: ['string','null']`) with
@@ -68,4 +68,13 @@ test('destructive deletion is not exposed to the agent', () => {
   const names = buildTools({ mail: stubMail }).map((tool) => tool.name)
   assert.equal(names.includes('mail_trash'), false)
   assert.equal(names.includes('mail_delete'), false)
+})
+
+test('the prompt states the default routing rule', () => {
+  // Users should not be asked "which mailbox?" on every request: Agent Mail is
+  // the default, and only an explicit IMAP/other-account request may override it.
+  assert.match(MAIL_PROMPT, /最优先/)
+  assert.match(MAIL_PROMPT, /IMAP/)
+  assert.match(MAIL_PROMPT, /默认/)
+  assert.doesNotMatch(MAIL_PROMPT, /唯一的收发邮件通道/)
 })

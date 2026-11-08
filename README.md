@@ -65,6 +65,54 @@ agently-cli auth login
 
 也可以让 Agent 代劳：把 <https://agent.qq.com/doc/cli-setup.md> 发给它。
 
+## CLI 与数据存放在哪
+
+插件不写死路径，按下面的顺序找 `agently-cli`，**第一个可用的原生二进制胜出**（找到 `scripts/run.js` 才算最后兜底）：
+
+| 顺序 | 位置 | 说明 |
+|---|---|---|
+| 1 | 设置 → 高级 → 「agently-cli 路径」 | 手填的绝对路径，最优先 |
+| 2 | 任何 PATH 目录下的 `agently-cli.exe`（macOS/Linux 为 `agently-cli`） | 最常见的情况 |
+| 3 | PATH 目录里的 npm 包布局 | `<dir>/node_modules/@tencent-qqmail/agently-cli`、`<dir>/lib/node_modules/…` |
+| 4 | **不在 PATH 上的全局前缀** | `%APPDATA%\npm`、`%LOCALAPPDATA%\npm`、`Program Files\nodejs`、`%APPDATA%\nvm\v*`、`fnm` 的 `node-versions\*\installation`、`%LOCALAPPDATA%\Volta\…`、`~/.volta/bin`、`~/.nvm/versions/node/*`、`~/.workbuddy/binaries/node/versions/*`、`/usr/local`、`/opt/homebrew` |
+| 5 | `scripts/run.js` | 只有前四步都找不到原生二进制时才用；会用当前 Node 运行时执行 |
+
+> 第 4 步是专门为「GUI 启动的应用继承不到 PATH」这种情况准备的——便携版 Node、nvm-windows、Volta、fnm 都会把全局包放在 PATH 之外的目录。
+
+### 新用户装在哪
+
+`npm install -g`（含面板里的一键安装）会装到**你这台机器的 npm 全局前缀**，常见对应关系：
+
+| 安装方式 | 全局前缀 | 实际被调用的二进制 |
+|---|---|---|
+| 官方 Node.js Windows 安装器 | `%APPDATA%\npm` | `%APPDATA%\npm\node_modules\@tencent-qqmail\agently-cli\node_modules\@tencent-qqmail\agently-cli-win32-x64\bin\agently-cli.exe` |
+| 便携/自带 Node 的客户端 | `<node 安装目录>`（如 `C://Users//<你>//.workbuddy//binaries//node//versions//22.x.x`） | 同上，前缀换成该目录 |
+| nvm-windows | `%APPDATA%\nvm\vX.Y.Z` | 同上 |
+| Volta / fnm | 各自版本目录 | 同上 |
+| macOS / Linux | `/usr/local` 或 `~/.npm-global` | `/usr/local/bin/agently-cli` |
+
+注意：PATH 里那个 `agently-cli.cmd` 只是 shim，真正执行的是平台包里的 `agently-cli.exe`。插件优先直接调 exe，正是为了避免 shim 再拉起一层 node 造成的黑窗闪烁。
+
+### 工作空间（workspace）
+
+- 默认值就是 **`default`**：插件设置里「工作空间」留空时不会注入任何环境变量，CLI 用它自己的默认值。
+- 需要多账号时填 `AGENTLY_WORKSPACE` 的值（例如 `work`），**每个 workspace 的凭据互相独立，切换后需要重新授权一次**。
+- 名称会被 slug 化：`bad name!` → `bad-name`。
+
+### 数据与凭据
+
+| 内容 | 位置 |
+|---|---|
+| CLI 配置（只有 `app_id`） | `~/.agently-cli/config.json` |
+| OAuth token | 系统安全存储（Windows 为 DPAPI），插件从不读取 |
+| 插件设置（外观等） | `~/.dsh/tc-mail/settings.json` |
+| 发信临时目录 / 附件暂存 / 下载 | `~/.dsh/tc-mail/{ops,uploads,downloads}`（ops 两分钟后自清，uploads 保留 24 小时） |
+
+### 怎么自查当前生效值
+
+- 面板 **设置 → 高级** 底部会显示「当前解析到」「探测来源」「当前工作空间」；
+- 终端：`npm prefix -g` 看全局前缀，`agently-cli +me` 看当前账号。
+
 ## 使用
 
 | 操作 | 位置 |
@@ -120,7 +168,10 @@ agently-cli auth login
 
 ## 在对话里发邮件（Agent 集成）
 
-启用本插件后，**不需要再装任何 skill**：它已经向 Harness 注册了 5 个工具（`mail_health / mail_list / mail_read / mail_search / mail_send`），并附带一段系统提示，声明「这是用户在 Harness 里唯一的收发邮件通道」。
+启用本插件后，**不需要再装任何 skill**：它已经向 Harness 注册了 5 个工具（`mail_health / mail_list / mail_read / mail_search / mail_send`），并附带一段系统提示，声明「这是用户在 Harness 里**最优先**的收发邮件通道」，且明确默认路由：
+
+> 除非用户在本次对话中明确要求改用其它邮箱或 IMAP 账号（并给出账号与鉴权），否则一律用 Agent Mail 发送，不需要先问「用哪个邮箱」。
+
 
 所以直接在对话框里说：
 

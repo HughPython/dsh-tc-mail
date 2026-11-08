@@ -60,7 +60,7 @@ function ColorField({ value, onChange, placeholder, presets }) {
   )
 }
 
-export function SettingsModal({ settings, tokens, onPreview, onSave, onReset, onClose, t }) {
+export function SettingsModal({ settings, tokens, cliInfo, workspace, onPreview, onSave, onReset, onClose, t }) {
   const [draft, setDraft] = useState(() => clone(settings))
   const [saving, setSaving] = useState(false)
   const [resetting, setResetting] = useState(false)
@@ -297,6 +297,15 @@ export function SettingsModal({ settings, tokens, onPreview, onSave, onReset, on
             onChange={(event) => update({ advanced: { workspace: event.target.value } })}
           />
         </div>
+        {cliInfo && cliInfo.path ? (
+          <p className="tc-help" style={{ margin: '0 0 4px', wordBreak: 'break-all' }}>
+            {t('resolvedCli')}：{cliInfo.path}
+            {cliInfo.source ? `（${t('cliSource')}: ${cliInfo.source}）` : ''}
+          </p>
+        ) : null}
+        <p className="tc-help" style={{ margin: 0 }}>
+          {t('resolvedWorkspace')}：{workspace || 'default'}
+        </p>
       </div>
     </Modal>
   )

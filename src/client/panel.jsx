@@ -524,6 +524,8 @@ export function MailPanel({ t }) {
         <SettingsModal
           settings={settings}
           tokens={tokens}
+          cliInfo={health && health.cli}
+          workspace={health && health.auth && health.auth.workspace}
           onPreview={setPreview}
           onSave={saveSettings}
           onReset={resetSettings}
