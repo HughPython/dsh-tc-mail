@@ -17,30 +17,16 @@ An Agent Mail client for [DeepSeek Harness](https://github.com/deepseek-ai/deeps
 - **读信**：HTML 正文按原始排版渲染（保留邮件自带的 `<style>`），纯文本保留换行；附件逐个下载到 `~/.dsh/tc-mail/downloads/`。
 - **写信 / 回复 / 转发**：支持抄送、密送、附件（单文件 ≤ 20 MB，账号上限 50 个）、全部回复、转发保留原件附件。
 - **搜索**：关键词搜索，作用域跟随当前文件夹，输入即搜（320 ms 去抖）。
-- **删除**：收件箱/发件箱 → 移入垃圾箱（30 天可恢复）；垃圾箱内 → 永久删除或清空垃圾箱，均带二次确认。
+- **删除**：收件箱/发件箱 → 移入垃圾箱；垃圾箱内 → 永久删除或清空垃圾箱，均带二次确认。**插件内不支持从垃圾箱还原**（CLI 没有该命令），垃圾箱视图顶部会明确提示并给出网页端入口。
 - **设置**：字体族、字号、字体颜色、界面背景色、界面透明度、圆角、默认文件夹、自动刷新间隔、默认是否加载邮件图片，以及 `agently-cli` 路径与工作空间。改动即时预览，保存后写入 `~/.dsh/tc-mail/settings.json`。
 - **Agent 工具**：`mail_list` / `mail_read` / `mail_search` / `mail_send` / `mail_trash`，与界面共用同一套 Host 服务层，模型和面板不会出现两套语义。
 - **零运行时依赖**：插件本体不依赖任何 npm 包，不联网任何第三方服务。
 
-## 安装
+## 安装（新用户三步）
 
-前置：Node.js ≥ 20，DeepSeek Harness ≥ 0.2.1-rc.2。
+> 顺序很重要：**先装插件，再在面板里装 CLI**。插件自带引导，不需要先开终端。
 
-### 1. 安装 Mail CLI 并授权
-
-装好插件后，面板会自己检测 CLI。没装的话，面板中间会给出**「一键安装 agently-cli」**按钮——它用你机器上 npm 的全局目录安装，不需要开终端；装完再点「去授权」即可。
-
-也可以手动执行：
-
-```bash
-npm install -g @tencent-qqmail/agently-cli
-agently-cli auth login      # 浏览器完成 OAuth
-agently-cli +me             # 确认邮箱地址
-```
-
-或者让 Agent 代劳：把 <https://agent.qq.com/doc/cli-setup.md> 发给它。
-
-### 2. 安装插件
+### 第 1 步：安装插件并重启
 
 ```bash
 # 从 npm（发布后）
@@ -53,11 +39,31 @@ dsh plugin --profile <profile> add github:<you>/dsh-tc-mail
 dsh plugin --profile <profile> add link:/absolute/path/to/dsh-tc-mail
 ```
 
-或在 Harness 的「插件」页从本地目录安装，效果相同：它会同时写入 `dependencies` 与 `dsh.profile.bundles`。
+或在 Harness 的「插件」页从本地目录安装。安装后**重启 Harness**，左侧栏出现 `我的邮箱`。
 
-### 3. 重启 Harness
+### 第 2 步：在面板里装 CLI 并授权
 
-插件在启动时装配，重启后左侧栏出现 `我的邮箱`。
+首次打开面板，如果本机没有 `agently-cli`，中间会显示引导：
+
+1. 点 **「一键安装 agently-cli」** —— 用你机器上 npm 的全局目录安装，实时回显日志，不需要终端；
+2. 装好后点 **「去授权」** —— 面板会拉起设备码授权，并把形如
+   `https://agent.qq.com/page/oauth?oauth_type=device&user_code=uc_…` 的链接显示在面板里；
+3. 在浏览器打开该链接、登录腾讯账号并确认，面板会在 2 秒内自动检测到授权完成，直接进入邮箱。
+
+这一步是实测过的：非交互环境（无 TTY）下 CLI 会直接打印授权链接，不会自动弹浏览器，也不需要预装任何东西。
+
+### 第 3 步：开始收发
+
+授权完成后即可看到收件箱。**之前没有 Agent Mail 也能用**：授权过程会自动为你创建一个 `xxx@agent.qq.com` 地址，与个人邮箱完全隔离，无需先去官网注册。
+
+如果自动安装失败（例如机器上没有可用的 npm），面板会同时给出可复制的命令，任选其一：
+
+```bash
+npm install -g @tencent-qqmail/agently-cli
+agently-cli auth login
+```
+
+也可以让 Agent 代劳：把 <https://agent.qq.com/doc/cli-setup.md> 发给它。
 
 ## 使用
 
@@ -165,8 +171,8 @@ test/          单元测试 + CLI 契约快照
 **Q：为什么发件箱的收件人有时为空？**
 列表接口不保证返回 `to`。插件不做猜测，读到详情后才补全。
 
-**Q：删除能恢复吗？**
-「删除」只是移入垃圾箱，30 天内可在垃圾箱里找到；「永久删除」不可恢复。
+**Q：删掉的邮件能恢复吗？**
+**在插件里不能。** `agently-cli` 只提供「移入垃圾箱」和「永久删除」两个动作，没有还原/移出命令（二进制里也不存在相关接口），所以插件没有可调用的能力。垃圾箱里的邮件仍占用存储、并在 30 天后由服务端清理。找回途径只有网页端：登录 <https://agent.qq.com> 打开垃圾箱看看是否有「还原」入口——这一点我未能验证，如果你确认有，可以告诉我，我再补一个跳转。
 
 **Q：多个邮箱账号？**
 `agently-cli` 以 `AGENTLY_WORKSPACE` 区分登录态，在设置 → 高级里切换即可。

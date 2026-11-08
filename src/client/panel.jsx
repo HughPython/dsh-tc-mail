@@ -481,6 +481,20 @@ export function MailPanel({ t }) {
             ))}
           </div>
 
+          {dir === 'trash' ? (
+            <div className="tc-notice">
+              <span>{t('trashNotice')}</span>
+              <span className="tc-spacer" />
+              <button
+                type="button"
+                className="tc-btn"
+                onClick={() => window.open('https://agent.qq.com', '_blank', 'noopener,noreferrer')}
+              >
+                {t('openWebMail')}
+              </button>
+            </div>
+          ) : null}
+
           <div className="tc-toolbar">
             <label className="tc-check">
               <input

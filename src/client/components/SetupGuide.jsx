@@ -39,6 +39,24 @@ function InstallLog({ install, t }) {
   )
 }
 
+function Steps({ current, t }) {
+  const items = [
+    { id: 1, label: t('stepInstall') },
+    { id: 2, label: t('stepAuthorize') },
+    { id: 3, label: t('stepUse') },
+  ]
+  return (
+    <div className="tc-steps">
+      {items.map((item) => (
+        <span key={item.id} className="tc-step" data-active={item.id === current}>
+          <i>{item.id < current ? '✓' : item.id}</i>
+          {item.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export function SetupGuide({ kind, health, login, install, onAuthorize, onInstall, t }) {
   if (kind === 'cli_missing' || kind === 'cli_broken') {
     const broken = kind === 'cli_broken'
@@ -49,6 +67,7 @@ export function SetupGuide({ kind, health, login, install, onAuthorize, onInstal
     return (
       <div className="tc-guide">
         <MailIcon size={28} />
+        <Steps current={1} t={t} />
         <h3>{broken ? t('cliBrokenTitle') : t('cliMissingTitle')}</h3>
         <p>{broken ? t('cliBrokenBody') : t('cliMissingBody')}</p>
 
@@ -89,8 +108,12 @@ export function SetupGuide({ kind, health, login, install, onAuthorize, onInstal
   return (
     <div className="tc-guide">
       <MailIcon size={28} />
+      <Steps current={2} t={t} />
       <h3>{t('unauthorizedTitle')}</h3>
       <p>{t('unauthorizedBody')}</p>
+      <p className="tc-help" style={{ maxWidth: 460 }}>
+        {t('newUserHint')}
+      </p>
 
       {waiting ? (
         <>
