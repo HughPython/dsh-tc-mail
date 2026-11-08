@@ -18,6 +18,7 @@
     "docs",
     "icon.svg",
     "cordis.patch.yml",
+    "screenshots.json",
     "README.md",
     "LICENSE"
   ],
