@@ -48,7 +48,7 @@ const views = viewArg ? viewArg.split('=')[1].split(',') : ['panel', 'reader', '
 const dark = args.includes('--dark')
 
 const browser = await chromium.launch({ channel: 'msedge', headless: true })
-const page = await browser.newPage({ viewport: { width: 1280, height: 880 }, deviceScaleFactor: 2 })
+const page = await browser.newPage({ viewport: { width: 1280, height: 880 }, deviceScaleFactor: 1 })
 
 const problems = []
 page.on('console', (message) => {

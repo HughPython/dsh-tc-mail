@@ -35,6 +35,18 @@
     "agently"
   ],
   "license": "MIT",
+  "author": "HughPython",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HughPython/dsh-tc-mail.git"
+  },
+  "homepage": "https://github.com/HughPython/dsh-tc-mail#readme",
+  "bugs": {
+    "url": "https://github.com/HughPython/dsh-tc-mail/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "manifestVersion": 1,
     "bundle": {

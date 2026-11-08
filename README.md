@@ -33,7 +33,7 @@ An Agent Mail client for [DeepSeek Harness](https://github.com/deepseek-ai/deeps
 dsh plugin --profile <profile> add dsh-tc-mail
 
 # 直接从 GitHub
-dsh plugin --profile <profile> add github:<you>/dsh-tc-mail
+dsh plugin --profile <profile> add github:HughPython/dsh-tc-mail
 
 # 本地开发目录（软链，改代码后重新构建并重启）
 dsh plugin --profile <profile> add link:/absolute/path/to/dsh-tc-mail
@@ -138,6 +138,8 @@ agently-cli auth login
 透明度低于 100% 时面板会启用 `backdrop-filter` 模糊，透过面板可以看到宿主壁纸。
 
 > 自定义深色背景且未单独设置字体颜色时，插件会按背景亮度自动选择深色或浅色文字，避免不可读。
+
+![设置弹框：字体、配色与透明度](docs/settings.png)
 
 ## 安全与隐私
 
