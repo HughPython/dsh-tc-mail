@@ -405,27 +405,41 @@ export function createMailService({ cli, settings, logger }) {
     })
   }
 
-  async function trash({ ids = [] } = {}) {
-    const messageIds = (Array.isArray(ids) ? ids : [ids]).map(attr).filter(Boolean)
-    if (!messageIds.length) throw new CliError('bad_request', '未选择邮件')
-    const done = []
-    const failed = []
-    for (const id of messageIds) {
-      try {
-        await confirmed((token) => {
-          const argv = ['message', '+trash', '--id', id]
-          if (token) argv.push('--confirmation-token', token)
-          return argv
-        })
-        done.push(id)
-      } catch (error) {
-        failed.push({ id, message: error && error.message })
-      }
+  /** Move one message to the (hidden) trash folder. Only used as a fallback. */
+  async function softDeleteOne(id) {
+    return confirmed((token) => {
+      const argv = ['message', '+trash', '--id', id]
+      if (token) argv.push('--confirmation-token', token)
+      return argv
+    })
+  }
+
+  /**
+   * Permanently delete one message.
+   *
+   * The CLI's `+delete --id` maps to `DELETE /messages/{id}/permanent` and does
+   * not require the message to sit in trash, so it is tried first: a single
+   * call, and no orphan left behind. Deployments that only allow permanent
+   * deletion from trash are covered by moving the message first.
+   */
+  async function removeOne(id) {
+    try {
+      await confirmed((token) => {
+        const argv = ['message', '+delete', '--id', id]
+        if (token) argv.push('--confirmation-token', token)
+        return argv
+      })
+      return 'direct'
+    } catch (error) {
+      log('warn', `[dsh-tc-mail] 直接永久删除失败，先移入垃圾箱重试：${(error && error.message) || error}`)
+      await softDeleteOne(id)
+      await confirmed((token) => {
+        const argv = ['message', '+delete', '--id', id]
+        if (token) argv.push('--confirmation-token', token)
+        return argv
+      })
+      return 'via-trash'
     }
-    if (!done.length && failed.length) {
-      throw new CliError('cli_error', failed[0].message || '移入垃圾箱失败', { failed })
-    }
-    return { moved: done, failed }
   }
 
   async function remove({ ids = [], all = false } = {}) {
@@ -435,28 +449,27 @@ export function createMailService({ cli, settings, logger }) {
         if (token) argv.push('--confirmation-token', token)
         return argv
       })
-      return { deletedCount: Number(result && result.deleted_count) || 0, deletes: [] }
+      return { deletedCount: Number(result && result.deleted_count) || 0, deletes: [], mode: 'all' }
     }
+
     const messageIds = (Array.isArray(ids) ? ids : [ids]).map(attr).filter(Boolean)
     if (!messageIds.length) throw new CliError('bad_request', '未选择邮件')
+
     const deletes = []
     const failed = []
+    const modes = new Set()
     for (const id of messageIds) {
       try {
-        await confirmed((token) => {
-          const argv = ['message', '+delete', '--id', id]
-          if (token) argv.push('--confirmation-token', token)
-          return argv
-        })
+        modes.add(await removeOne(id))
         deletes.push(id)
       } catch (error) {
         failed.push({ id, message: error && error.message })
       }
     }
     if (!deletes.length && failed.length) {
-      throw new CliError('cli_error', failed[0].message || '永久删除失败', { failed })
+      throw new CliError('cli_error', failed[0].message || '删除失败', { failed })
     }
-    return { deletedCount: deletes.length, deletes, failed }
+    return { deletedCount: deletes.length, deletes, failed, mode: [...modes].join(',') }
   }
 
   /* -------------------------------------------------------------- *
@@ -519,7 +532,6 @@ export function createMailService({ cli, settings, logger }) {
     send,
     reply,
     forward,
-    trash,
     remove,
     saveUpload,
     downloadAttachment,

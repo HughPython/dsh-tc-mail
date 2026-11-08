@@ -246,7 +246,6 @@ export function SettingsModal({ settings, tokens, onPreview, onSave, onReset, on
             >
               <option value="inbox">{t('inbox')}</option>
               <option value="sent">{t('sent')}</option>
-              <option value="trash">{t('trash')}</option>
             </select>
           </div>
           <div className="tc-field">

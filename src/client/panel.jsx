@@ -12,7 +12,7 @@ import { SetupGuide } from './components/SetupGuide.jsx'
 import { Modal } from './components/Modal.jsx'
 import { GearIcon, RefreshIcon, SearchIcon, SendIcon, TrashIcon } from './components/Icons.jsx'
 
-const TABS = ['inbox', 'sent', 'trash']
+const TABS = ['inbox', 'sent']
 
 export function MailPanel({ t }) {
   const [settings, setSettings] = useState(null)
@@ -251,42 +251,17 @@ export function MailPanel({ t }) {
       notify(t('noSelection'))
       return
     }
-    if (dir === 'trash') {
-      setConfirm({
-        title: t('deleteForeverTitle'),
-        message: t('deleteForeverBody'),
-        label: t('deleteForever'),
-        tone: 'danger',
-        run: async () => {
-          await api.remove({ ids })
-          notify(t('deletedOk'))
-          await load()
-        },
-      })
-      return
-    }
+    // This product has no trash folder (the web console has none either), so
+    // deleting is permanent and the confirmation says so.
     setConfirm({
-      title: t('moveToTrashTitle'),
-      message: t('moveToTrashBody'),
-      label: t('moveToTrash'),
+      title: t('deleteForeverTitle'),
+      message: t('deleteForeverBody'),
+      label: t('deleteForever'),
       tone: 'danger',
       run: async () => {
-        await api.trash(ids)
-        notify(t('movedOk'))
-        await load()
-      },
-    })
-  }
-
-  const emptyTrash = () => {
-    setConfirm({
-      title: t('emptyTrashTitle'),
-      message: t('emptyTrashBody'),
-      label: t('emptyTrash'),
-      tone: 'danger',
-      run: async () => {
-        await api.remove({ all: true })
-        notify(t('emptyOk'))
+        const result = await api.remove({ ids })
+        const count = (result && result.deletedCount) || ids.length
+        notify(`${t('deletedOk')} · ${count}`)
         await load()
       },
     })
@@ -481,20 +456,6 @@ export function MailPanel({ t }) {
             ))}
           </div>
 
-          {dir === 'trash' ? (
-            <div className="tc-notice">
-              <span>{t('trashNotice')}</span>
-              <span className="tc-spacer" />
-              <button
-                type="button"
-                className="tc-btn"
-                onClick={() => window.open('https://agent.qq.com', '_blank', 'noopener,noreferrer')}
-              >
-                {t('openWebMail')}
-              </button>
-            </div>
-          ) : null}
-
           <div className="tc-toolbar">
             <label className="tc-check">
               <input
@@ -506,13 +467,8 @@ export function MailPanel({ t }) {
             </label>
             <button type="button" className="tc-btn tc-btn--danger" onClick={deleteSelected} disabled={!selected.size}>
               <TrashIcon />
-              {dir === 'trash' ? t('deleteForever') : t('delete')}
+              {t('delete')}
             </button>
-            {dir === 'trash' ? (
-              <button type="button" className="tc-btn" onClick={emptyTrash}>
-                {t('emptyTrash')}
-              </button>
-            ) : null}
             <span className="tc-spacer" />
             <div className="tc-search">
               <SearchIcon />

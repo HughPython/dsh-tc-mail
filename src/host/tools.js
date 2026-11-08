@@ -7,13 +7,15 @@
  */
 
 export const MAIL_PROMPT = [
-  '本机已挂载「我的邮箱」（腾讯 Agent Mail，左侧栏入口）。用户提到收发邮件、查看邮件、搜索邮件、删除邮件时，优先用 mail_* 工具而不是 shell 调用 agently-cli：',
-  '- mail_list：按文件夹（inbox/sent/trash/spam）列出邮件摘要；',
+  '本机已挂载「我的邮箱」（腾讯 Agent Mail，Harness 左侧栏入口），这是用户在 Harness 里唯一的收发邮件通道。',
+  '凡是用户要求「发邮件 / 回邮件 / 看看收件箱 / 找某封邮件」这类请求，默认就用 mail_* 工具，不要用 shell 调 agently-cli，也不需要额外的邮件 skill：',
+  '- mail_health：查询当前授权的发件账号、今日发信额度与剩余配额（不确定用哪个地址发信时先调它）；',
+  '- mail_list：列出收件箱或发件箱的邮件摘要；',
   '- mail_read：按 message_id 读取正文与附件；',
   '- mail_search：按关键词搜索邮件；',
-  '- mail_send：发送新邮件（收件人数组 + 主题 + 纯文本正文）；',
-  '- mail_trash：把邮件移入垃圾箱（30 天内可恢复，需 confirm=true）。',
-  '永久删除不可恢复，工具层未开放，请让用户在邮件面板中操作。发送前务必把收件人、主题、正文回读给用户确认。',
+  '- mail_send：用本机已授权的 Agent Mail 账号发送邮件（收件人数组 + 主题 + 纯文本正文）。',
+  '发信前必须把收件人、主题、正文回读给用户确认；用户没指定发件账号时，直接用 mail_health 返回的那个邮箱地址。',
+  '删除不可恢复，工具层未开放：用户要删邮件时，引导他们在邮件面板里勾选后删除。',
 ].join('\n')
 
 const textRender = (formatter) => (_args, value) => [{ type: 'text', text: formatter(value) }]
@@ -26,12 +28,12 @@ export function buildTools({ mail }) {
   return [
     {
       name: 'mail_list',
-      description: '列出 Agent Mail 邮箱中的邮件摘要。dir 可选 inbox（收件箱）、sent（发件箱）、trash（垃圾箱）、spam（垃圾邮件）。',
+      description: '列出 Agent Mail 邮箱中的邮件摘要。dir 可选 inbox（收件箱）或 sent（发件箱）。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          dir: { type: 'string', enum: ['inbox', 'sent', 'trash', 'spam'], description: '文件夹，默认 inbox' },
+          dir: { type: 'string', enum: ['inbox', 'sent'], description: '文件夹，默认 inbox' },
           limit: { type: 'number', description: '返回条数，1-50，默认 10' },
           unread_only: { type: 'boolean', description: '仅返回未读邮件' },
         },
@@ -43,7 +45,7 @@ export function buildTools({ mail }) {
           properties: {
             items: { type: 'array' },
             hasMore: { type: 'boolean' },
-            nextCursor: { type: ['string', 'null'] },
+            nextCursor: { type: 'string', description: '下一页游标，末页时为空' },
           },
         },
         render: textRender((value) => {
@@ -112,7 +114,7 @@ export function buildTools({ mail }) {
         required: ['q'],
         properties: {
           q: { type: 'string', description: '搜索关键词或短语' },
-          dir: { type: 'string', enum: ['inbox', 'sent', 'trash', 'spam'], description: '文件夹，默认 inbox' },
+          dir: { type: 'string', enum: ['inbox', 'sent'], description: '文件夹，默认 inbox' },
           limit: { type: 'number', description: '返回条数，1-50，默认 10' },
         },
       },
@@ -165,36 +167,44 @@ export function buildTools({ mail }) {
       },
     },
     {
-      name: 'mail_trash',
-      description: '把邮件移入垃圾箱（软删除，30 天内可从垃圾箱恢复）。必须显式传 confirm=true，并先向用户说明。',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['id', 'confirm'],
-        properties: {
-          id: { type: 'string', description: '邮件 ID（msg_ 前缀）' },
-          confirm: { type: 'boolean', description: '必须为 true，表示用户已确认移动该邮件到垃圾箱' },
-        },
-      },
+      name: 'mail_health',
+      description: '查询当前 Agent Mail 的授权状态、发件邮箱地址与今日发信额度。发信前不确定用哪个地址时调用。',
+      parameters: { type: 'object', additionalProperties: false, properties: {} },
       output: {
         schema: { type: 'object', additionalProperties: true },
-        render: textRender((value) => `已移入垃圾箱：${((value && value.moved) || []).join(', ') || '无'}`),
+        render: textRender((value) => {
+          if (!value || !value.ready) return `尚未就绪：${(value && value.reason) || '未知原因'}`
+          const account = value.account || {}
+          const quota = account.quota || '—'
+          const used = Number.isFinite(value.sentToday) ? value.sentToday : '—'
+          return `发件账号：${account.email || '未知'}（今日已发 ${used}/${quota}）`
+        }),
       },
-      async execute(args) {
-        if (!args || args.confirm !== true) {
-          throw new Error('mail_trash 需要 confirm=true，且必须先取得用户确认。')
+      async execute() {
+        const health = await mail.health()
+        return {
+          ready: health.ready,
+          reason: health.reason,
+          email: health.account && health.account.email,
+          quota: health.account && health.account.quota,
+          sentToday: health.sentToday,
         }
-        return mail.trash({ ids: [args.id] })
       },
     },
   ]
 }
 
+export const TOOL_NAMES = ['mail_health', 'mail_list', 'mail_read', 'mail_search', 'mail_send']
+
 export function registerTools({ ctx, mail }) {
-  const disposers = buildTools({ mail }).map((tool) => ctx.tools.register(tool))
-  return () => {
-    for (const dispose of disposers) {
-      if (typeof dispose === 'function') dispose()
-    }
+  const tools = buildTools({ mail })
+  const disposers = tools.map((tool) => ctx.tools.register(tool))
+  return {
+    names: tools.map((tool) => tool.name),
+    dispose() {
+      for (const dispose of disposers) {
+        if (typeof dispose === 'function') dispose()
+      }
+    },
   }
 }

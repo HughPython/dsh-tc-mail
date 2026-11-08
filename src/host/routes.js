@@ -71,7 +71,7 @@ function statusFor(code) {
   }
 }
 
-export function registerRoutes({ webServer, mail, cli, settings, logger }) {
+export function registerRoutes({ webServer, mail, cli, settings, logger, runtime }) {
   const log = (level, message) => {
     if (logger && typeof logger[level] === 'function') logger[level](message)
   }
@@ -113,7 +113,8 @@ export function registerRoutes({ webServer, mail, cli, settings, logger }) {
 
     /* --- health ------------------------------------------------- */
     if (sub === '/health' && method === 'GET') {
-      writeJson(res, 200, { ok: true, data: await mail.health({ force: url.searchParams.get('force') === '1' }) })
+      const health = await mail.health({ force: url.searchParams.get('force') === '1' })
+      writeJson(res, 200, { ok: true, data: { ...health, tools: (runtime && runtime.tools) || [], toolError: (runtime && runtime.toolError) || null } })
       return
     }
 
