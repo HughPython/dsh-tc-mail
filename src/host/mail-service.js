@@ -7,7 +7,7 @@
  * so the UI and the model can never drift apart.
  */
 
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { CliError } from './cli.js'
@@ -281,13 +281,24 @@ export function createMailService({ cli, settings, logger }) {
   async function stageAttachments(dir, uploads) {
     const list = Array.isArray(uploads) ? uploads.filter((entry) => entry && entry.uploadId) : []
     const staged = []
-    for (const [index, upload] of list.entries()) {
+    const used = new Set()
+    for (const upload of list) {
       const uploadId = safeFileName(upload.uploadId, '')
       if (!uploadId) continue
       const source = path.join(UPLOADS_DIR, uploadId, 'file')
       try {
         const buffer = await readFile(source)
-        const name = `${index + 1}-${safeFileName(upload.name || 'attachment')}`
+        // The recipient sees this name, so keep it: disambiguate only when two
+        // files in the same mail collide.
+        const base = safeFileName(upload.name || 'attachment')
+        const ext = path.extname(base)
+        let name = base
+        let counter = 2
+        while (used.has(name.toLowerCase())) {
+          name = `${path.basename(base, ext)} (${counter})${ext}`
+          counter += 1
+        }
+        used.add(name.toLowerCase())
         await writeFile(path.join(dir, name), buffer)
         staged.push(`./${name}`)
       } catch {
@@ -302,17 +313,25 @@ export function createMailService({ cli, settings, logger }) {
    * exit 0 for state-changing calls. The caller has already shown the user a
    * confirmation surface, so the retry may proceed immediately.
    */
-  async function confirmed(argvFactory, { timeoutMs = 60_000 } = {}) {
-    const first = await cli.data(argvFactory(), { timeoutMs })
+  async function confirmed(argvFactory, { timeoutMs = 60_000, cwd, dryRun = false } = {}) {
+    // `cwd` is load-bearing: `--body-file` and `--attachment` must be paths
+    // inside the working directory, so the operation directory has to be the
+    // child process's cwd. Omitting it resolves `./body.txt` against whatever
+    // directory the Host happens to run in.
+    if (dryRun) {
+      const { parsed } = await cli.call([...argvFactory(), '--dry-run'], { timeoutMs, cwd })
+      return { dryRun: true, plan: parsed }
+    }
+    const first = await cli.data(argvFactory(), { timeoutMs, cwd })
     if (first && first.confirmation_required) {
       const token = attr(first.confirmation_token)
       if (!token) throw new CliError('needs_confirm', (first && first.message) || '该操作需要二次确认，但未取得确认令牌')
-      return cli.data(argvFactory(token), { timeoutMs })
+      return cli.data(argvFactory(token), { timeoutMs, cwd })
     }
     return first
   }
 
-  async function send({ to, cc, bcc, subject, body, bodyFormat = 'plain', attachments = [] } = {}) {
+  async function send({ to, cc, bcc, subject, body, bodyFormat = 'plain', attachments = [], dryRun = false } = {}) {
     const recipients = (Array.isArray(to) ? to : []).map(attr).filter(Boolean)
     if (!recipients.length) throw new CliError('bad_request', '至少需要一个收件人')
     const title = attr(subject)
@@ -332,12 +351,13 @@ export function createMailService({ cli, settings, logger }) {
         else argv.push('--confirmed')
         return argv
       }
-      const result = await confirmed(build, { timeoutMs: 120_000 })
+      const result = await confirmed(build, { timeoutMs: 120_000, cwd: dir, dryRun })
+      if (result && result.dryRun) return { dryRun: true, plan: result.plan, recipients, subject: title, attachmentCount: attachArgs.length }
       return { queued: result ? result.queued !== false : true, recipients, subject: title, attachmentCount: attachArgs.length }
     })
   }
 
-  async function reply({ id, body, bodyFormat = 'plain', replyAll = false, cc = [], bcc = [], attachments = [] } = {}) {
+  async function reply({ id, body, bodyFormat = 'plain', replyAll = false, cc = [], bcc = [], attachments = [], dryRun = false } = {}) {
     const messageId = attr(id)
     if (!messageId) throw new CliError('bad_request', '缺少邮件 ID')
     return withOpDir(async (dir) => {
@@ -353,12 +373,13 @@ export function createMailService({ cli, settings, logger }) {
         else argv.push('--confirmed')
         return argv
       }
-      const result = await confirmed(build, { timeoutMs: 120_000 })
+      const result = await confirmed(build, { timeoutMs: 120_000, cwd: dir, dryRun })
+      if (result && result.dryRun) return { dryRun: true, plan: result.plan, id: messageId, replyAll: Boolean(replyAll) }
       return { queued: result ? result.queued !== false : true, id: messageId, replyAll: Boolean(replyAll) }
     })
   }
 
-  async function forward({ id, to, body = '', cc = [], bcc = [], includeAttachments = true } = {}) {
+  async function forward({ id, to, body = '', cc = [], bcc = [], includeAttachments = true, dryRun = false } = {}) {
     const messageId = attr(id)
     if (!messageId) throw new CliError('bad_request', '缺少邮件 ID')
     const recipients = (Array.isArray(to) ? to : []).map(attr).filter(Boolean)
@@ -378,7 +399,8 @@ export function createMailService({ cli, settings, logger }) {
         else argv.push('--confirmed')
         return argv
       }
-      const result = await confirmed(build, { timeoutMs: 120_000 })
+      const result = await confirmed(build, { timeoutMs: 120_000, cwd: dir, dryRun })
+      if (result && result.dryRun) return { dryRun: true, plan: result.plan, id: messageId, recipients }
       return { queued: result ? result.queued !== false : true, id: messageId, recipients }
     })
   }
@@ -441,9 +463,25 @@ export function createMailService({ cli, settings, logger }) {
    * Attachments
    * -------------------------------------------------------------- */
 
+  /** Drop staged uploads older than a day so the data dir cannot grow unbounded. */
+  async function sweepUploads() {
+    try {
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000
+      for (const entry of await readdir(UPLOADS_DIR, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const full = path.join(UPLOADS_DIR, entry.name)
+        const info = await stat(full)
+        if (info.mtimeMs < cutoff) await rm(full, { recursive: true, force: true })
+      }
+    } catch {
+      /* the directory may not exist yet */
+    }
+  }
+
   async function saveUpload({ name, data } = {}) {
     const buffer = Buffer.from(String(data || '').replace(/^data:[^;]+;base64,/, ''), 'base64')
     if (!buffer.length) throw new CliError('bad_request', '附件内容为空')
+    void sweepUploads()
     const uploadId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     const dir = path.join(UPLOADS_DIR, uploadId)
     await mkdir(dir, { recursive: true })
