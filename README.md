@@ -4,6 +4,12 @@
 
 An Agent Mail client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): sidebar entry, native panel, full mail operations, and appearance settings for font, colour and transparency.
 
+**写在前面：**
+
+这是我第一个发布的agent-coding项目，如果对你有帮助的话请不要吝啬你的⭐
+
+这是一个纯智能体邮箱，无需自身的imap邮箱授权码，采用腾讯Agent Mail，主要应用于日常非正式邮件的发送，灵感来源于workbuddy（腾讯的agent生态太好了）。
+
 ![我的邮箱面板](docs/panel.png)
 
 > 截图来自 `dev/preview.html` 本地预览挂具，数据全部为合成样例（`example.com`），不含任何真实邮箱内容。
